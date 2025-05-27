@@ -253,15 +253,32 @@
             findCluster(row, col - 1, color, visited, cluster);
         }
 
-         function removeCluster(cluster) {
-        return new Promise(resolve => {
-            // Mainkan musik saat pertama kali menghancurkan blok
-            if(!firstBlockDestroyed && cluster.length >= 2) {
-                firstBlockDestroyed = true;
-                bgMusic.play().catch(error => {
-                    console.log('Autoplay blocked. Destroy a block to start music');
-                });
-            }
+        function removeCluster(cluster) {
+    return new Promise(resolve => {
+        // Trigger music on first valid block destruction
+        if(!firstBlockDestroyed && cluster.length >= 2) {
+            firstBlockDestroyed = true;
+            
+            // Tambah event listener untuk interaksi pertama
+            const playMusic = () => {
+                bgMusic.play()
+                    .then(() => {
+                        // Hapus event listener setelah berhasil diputar
+                        document.removeEventListener('touchstart', playMusic);
+                        document.removeEventListener('click', playMusic);
+                    })
+                    .catch(error => {
+                        console.log('Autoplay prevented');
+                    });
+            };
+            
+            // Coba langsung play
+            playMusic();
+            
+            // Tambah fallback untuk mobile browsers
+            document.addEventListener('touchstart', playMusic);
+            document.addEventListener('click', playMusic);
+        }
 
             // Mainkan sound effect
             blastSound.currentTime = 0;
