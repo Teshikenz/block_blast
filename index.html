@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <audio id="blast-sound" hidden>
+        <source src="blast.mp3" type="audio/mpeg">
+        Your browser does not support the audio element.
+    </audio>
+
+    <audio id="background-music" loop hidden>
+        <source src="background-music.mp3" type="audio/mpeg">
+        Your browser does not support the audio element.
+    </audio>
+    <title>Block Blasts</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            background-color: #f0f0f0;
+            font-family: Arial, sans-serif;
+            touch-action: manipulation;
+        }
+
+        #game-container {
+            background-color: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.1);
+            width: 90vmin;
+            height: 90vmin;
+            max-width: 500px;
+            max-height: 500px;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(8, 1fr);
+            gap: 2px;
+            flex: 1;
+            width: 100%;
+            height: 100%;
+        }
+
+        .block {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            border-radius: 3px;
+            cursor: pointer;
+            transition: transform 0.1s;
+            overflow: hidden;
+        }
+
+        .info {
+            text-align: center;
+            margin-bottom: 10px;
+            font-size: 2vmin;
+        }
+
+        button {
+            padding: 1.5vmin 3vmin;
+            font-size: 2vmin;
+            margin-top: 10px;
+        }
+
+        @media (max-width: 600px) {
+            .info {
+                font-size: 3vmin;
+            }
+            
+            button {
+                font-size: 3vmin;
+                padding: 2vmin 4vmin;
+            }
+        }
+
+        .block:hover {
+            transform: scale(1.05);
+            z-index: 1;
+        }
+
+        .block.removing {
+            animation: pop 0.4s cubic-bezier(0.68, -0.55, 0.27, 1.55) forwards;
+        }
+
+        @keyframes pop {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+            100% { transform: scale(0); opacity: 0; }
+        }
+
+        .falling {
+            transition: all 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        .info span#highscore {
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        .info {
+            text-align: center;
+            margin-bottom: 15px;
+        }
+
+        #game-over {
+            display: none;
+            text-align: center;
+            color: red;
+            font-weight: bold;
+            margin-top: 10px;
+            animation: gameOverBlink 1s infinite;
+        }
+
+        @keyframes gameOverBlink {
+            0% { opacity: 1; }
+            50% { opacity: 0.5; }
+            100% { opacity: 1; }
+        }
+
+        button {
+            padding: 10px 20px;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .music-control {
+            padding: 10px 20px !important;
+            font-size: 1.8vmin !important;
+            margin: 0 !important;
+            background-color: #4CAF50 !important;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 600px) {
+            .music-control {
+                font-size: 2.5vmin !important;
+                padding: 1.5vmin 2.5vmin !important;
+            }
+        }
+</style>
+</head>
+<body>
+    <div id="game-container">
+        <div class="info">
+            High Score: <span id="highscore">0</span>
+            Score: <span id="score">0</span> 
+            Moves: <span id="moves">15</span>
+        </div>
+        <div id="grid" class="grid"></div>
+        <div id="game-over">Game Over!</div>
+        <button onclick="resetGame()">Reset Game</button>
+    </div>
+
+    <script>
+        let score = 0;
+        let moves = 15;
+        const rows = 8;
+        const cols = 8;
+        const colors = ['#FF6B6B', '#4ECDC4', '#45B7D1', '#96CEB4', '#FFEEAD', '#FF9999'];
+        let isAnimating = false;
+        let musicOn = true;
+        const blastSound = document.getElementById('blast-sound');
+        const bgMusic = document.getElementById('background-music');
+        let firstBlockDestroyed = false;
+        bgMusic.volume = 0.5; // Set initial volume
+        let highScore = localStorage.getItem('blockBlastHighScore') || 0;
+        
+        function createGrid() {
+            const grid = document.getElementById('grid');
+            grid.innerHTML = '';
+            
+            for(let i = 0; i < rows; i++) {
+                for(let j = 0; j < cols; j++) {
+                    const block = document.createElement('div');
+                    block.className = 'block';
+                    block.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                    block.dataset.row = i;
+                    block.dataset.col = j;
+                    block.addEventListener('click', handleBlockClick);
+                    grid.appendChild(block);
+                }
+            }
+        }
+
+        // Panggil ulang createGrid saat resize window
+        let lastWidth = window.innerWidth;
+        window.addEventListener('resize', () => {
+            if(window.innerWidth !== lastWidth) {
+                document.getElementById('game-container').style.height = 
+                    document.getElementById('game-container').offsetWidth + 'px';
+                lastWidth = window.innerWidth;
+            }
+        });
+
+        // Inisialisasi ukuran awal
+        document.getElementById('game-container').style.height = 
+            document.getElementById('game-container').offsetWidth + 'px';
+
+
+
+        async function handleBlockClick(event) {
+            if(moves <= 0 || isAnimating) return;
+            
+            isAnimating = true;
+            const clickedBlock = event.target;
+            const color = clickedBlock.style.backgroundColor;
+            const visited = new Set();
+            const cluster = [];
+            
+            findCluster(
+                parseInt(clickedBlock.dataset.row),
+                parseInt(clickedBlock.dataset.col),
+                color,
+                visited,
+                cluster
+            );
+
+            if(cluster.length >= 2) {
+                await removeCluster(cluster);
+                updateScore(cluster.length);
+                moves--;
+                updateMoves();
+                await collapseBlocks();
+                await refillGrid();
+            }
+            
+            isAnimating = false;
+        }
+
+        function findCluster(row, col, color, visited, cluster) {
+            if(row < 0 || row >= rows || col < 0 || col >= cols) return;
+            const block = getBlock(row, col);
+            if(!block || visited.has(block) || block.style.backgroundColor !== color) return;
+            
+            visited.add(block);
+            cluster.push(block);
+            
+            findCluster(row + 1, col, color, visited, cluster);
+            findCluster(row - 1, col, color, visited, cluster);
+            findCluster(row, col + 1, color, visited, cluster);
+            findCluster(row, col - 1, color, visited, cluster);
+        }
+
+         function removeCluster(cluster) {
+        return new Promise(resolve => {
+            // Mainkan musik saat pertama kali menghancurkan blok
+            if(!firstBlockDestroyed && cluster.length >= 2) {
+                firstBlockDestroyed = true;
+                bgMusic.play().catch(error => {
+                    console.log('Autoplay blocked. Destroy a block to start music');
+                });
+            }
+
+            // Mainkan sound effect
+            blastSound.currentTime = 0;
+            blastSound.play().catch(error => {
+                console.log('Sound effect blocked');
+            });
+
+            // Animate removal
+            cluster.forEach(block => {
+                block.classList.add('removing');
+            });
+            
+            setTimeout(() => {
+                cluster.forEach(block => {
+                    block.style.backgroundColor = 'transparent';
+                    block.classList.remove('removing');
+                });
+                resolve();
+            }, 400);
+        });
+    }
+
+        async function collapseBlocks() {
+            return new Promise(resolve => {
+                const transitions = [];
+                
+                for(let col = 0; col < cols; col++) {
+                    let emptySpaces = 0;
+                    for(let row = rows - 1; row >= 0; row--) {
+                        const block = getBlock(row, col);
+                        if(block.style.backgroundColor === 'transparent') {
+                            emptySpaces++;
+                        } else if(emptySpaces > 0) {
+                            const targetRow = row + emptySpaces;
+                            const targetBlock = getBlock(targetRow, col);
+                            
+                            // Animate movement
+                            targetBlock.style.backgroundColor = block.style.backgroundColor;
+                            block.style.backgroundColor = 'transparent';
+                            
+                            // Add transition effect
+                            targetBlock.style.transform = `translateY(${emptySpaces * -55}px)`;
+                            setTimeout(() => {
+                                targetBlock.style.transform = 'translateY(0)';
+                            }, 50);
+                        }
+                    }
+                }
+                
+                setTimeout(resolve, 300);
+            });
+        }
+
+        async function refillGrid() {
+            return new Promise(resolve => {
+                const blocks = document.querySelectorAll('.block');
+                let delay = 0;
+                
+                blocks.forEach(block => {
+                    if(block.style.backgroundColor === 'transparent') {
+                        setTimeout(() => {
+                            block.style.backgroundColor = colors[Math.floor(Math.random() * colors.length)];
+                            block.style.opacity = '0';
+                            block.style.transform = 'translateY(-100px)';
+                            
+                            setTimeout(() => {
+                                block.style.opacity = '1';
+                                block.style.transform = 'translateY(0)';
+                            }, 100);
+                        }, delay);
+                        
+                        delay += 50;
+                    }
+                });
+                
+                setTimeout(resolve, delay + 200);
+            });
+        }
+
+        function getBlock(row, col) {
+            return document.querySelector(`[data-row="${row}"][data-col="${col}"]`);
+        }
+
+        function updateScore(points) {
+        const earned = points * 10;
+        score += earned;
+        
+        // Update high score
+        if(score > highScore) {
+            highScore = score;
+            localStorage.setItem('blockBlastHighScore', highScore);
+            document.getElementById('highscore').textContent = highScore;
+        }
+        
+        document.getElementById('score').textContent = score;
+        
+        if (earned > 50) {
+            moves += 2;
+            updateMoves();
+        }
+        }
+
+        function updateMoves() {
+            document.getElementById('moves').textContent = moves;
+            if(moves <= 0) {
+                document.getElementById('game-over').style.display = 'block';
+            }
+        }
+
+        document.querySelectorAll('.block').forEach(block => {
+            block.addEventListener('touchstart', function(e) {
+                e.preventDefault();
+                this.click();
+            });
+        });
+
+        // Inisialisasi grid setelah DOM loaded
+        document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('highscore').textContent = highScore;
+            createGrid();
+            
+            // Tambah event listener untuk touch setelah grid dibuat
+            document.getElementById('grid').addEventListener('touchstart', function(e) {
+                if(e.target.classList.contains('block')) {
+                    e.preventDefault();
+                    e.target.click();
+                }
+            }, { passive: false });
+        });
+
+
+        function resetGame() {
+            score = 0;
+            document.getElementById('score').textContent = score;
+            document.getElementById('highscore').textContent = highScore;
+            bgMusic.play();
+            score = 0;
+            moves = 15;
+            document.getElementById('score').textContent = score;
+            document.getElementById('moves').textContent = moves;
+            document.getElementById('game-over').style.display = 'none';
+            createGrid();
+        }
+
+        // Initialize game
+        createGrid();
+    </script>
+</body>
+</html>
